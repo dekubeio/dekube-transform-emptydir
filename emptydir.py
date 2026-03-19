@@ -11,7 +11,7 @@ import sys
 _WORKLOAD_KINDS = ("DaemonSet", "Deployment", "Job", "Pod", "StatefulSet")
 
 
-def _log(msg):
+def _emptydir_log(msg):
     print(f"  [emptydir] {msg}", file=sys.stderr)
 
 
@@ -114,4 +114,4 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
                 # Declare in compose_extras (user config wins)
                 if any_replaced and named_vol not in config_volumes:
                     ctx.compose_extras.setdefault("volumes", {})[named_vol] = {}
-                    _log(f"{named_vol}: shared between {', '.join(sorted(svc_mounts.keys()))}")
+                    _emptydir_log(f"{named_vol}: shared between {', '.join(sorted(svc_mounts.keys()))}")
