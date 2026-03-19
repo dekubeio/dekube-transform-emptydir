@@ -86,6 +86,7 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
         for workload_name, vol_map in shared.items():
             for vol_name, svc_mounts in vol_map.items():
                 named_vol = f"{workload_name}-{vol_name}"
+                any_replaced = False
 
                 for svc_name, mount_path in svc_mounts.items():
                     svc = compose_services.get(svc_name)
@@ -105,8 +106,9 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
 
                     if replaced:
                         svc["volumes"] = new_volumes
+                        any_replaced = True
 
                 # Declare in compose_extras (user config wins)
-                if named_vol not in config_volumes:
+                if any_replaced and named_vol not in config_volumes:
                     ctx.compose_extras.setdefault("volumes", {})[named_vol] = {}
                     _log(f"{named_vol}: shared between {', '.join(sorted(svc_mounts.keys()))}")
