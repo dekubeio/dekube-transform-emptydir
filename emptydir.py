@@ -8,7 +8,7 @@ corrected volume entries.
 
 import sys
 
-_WORKLOAD_KINDS = ("DaemonSet", "Deployment", "Job", "StatefulSet")
+_WORKLOAD_KINDS = ("DaemonSet", "Deployment", "Job", "Pod", "StatefulSet")
 
 
 def _log(msg):
@@ -25,7 +25,10 @@ def _find_shared_emptydirs(manifests):
         for m in manifests.get(kind, []):
             name = (m.get("metadata") or {}).get("name", "unknown")
             spec = m.get("spec") or {}
-            pod_spec = (spec.get("template") or {}).get("spec") or {}
+            if kind == "Pod":
+                pod_spec = spec
+            else:
+                pod_spec = (spec.get("template") or {}).get("spec") or {}
 
             # Find emptyDir volume names
             emptydir_names = set()
