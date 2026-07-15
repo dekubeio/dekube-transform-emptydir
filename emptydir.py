@@ -49,13 +49,15 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
 
                 # Main container (containers[0])
                 containers = pod_spec.get("containers") or []
-                if containers:
+                if containers and containers[0]:
                     for vm in containers[0].get("volumeMounts") or []:
                         if vm.get("name", "") in emptydir_names:
                             vol_mounts.setdefault(vm["name"], {})[name] = vm.get("mountPath", "")
 
                 # Init containers
                 for ic in pod_spec.get("initContainers") or []:
+                    if not ic:
+                        continue
                     ic_name = ic.get("name", "init")
                     svc_name = f"{name}-init-{ic_name}"
                     for vm in ic.get("volumeMounts") or []:
@@ -64,6 +66,8 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
 
                 # Sidecar containers (containers[1:] — convention shared with workloads.py)
                 for sc in containers[1:]:
+                    if not sc:
+                        continue
                     sc_name = sc.get("name", "sidecar")
                     svc_name = f"{name}-sidecar-{sc_name}"
                     for vm in sc.get("volumeMounts") or []:
