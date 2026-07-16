@@ -21,63 +21,58 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
         print(f"  [{self.name}] {msg}", file=sys.stderr)
 
     @staticmethod
+    def _iter_workloads(manifests):
+        """Yield (workload_name, pod_spec) for every workload manifest."""
+        for kind in _WORKLOAD_KINDS:
+            for m in manifests.get(kind, []):
+                name = (m.get("metadata") or {}).get("name", "unknown")
+                spec = m.get("spec") or {}
+                pod_spec = spec if kind == "Pod" else (spec.get("template") or {}).get("spec") or {}
+                yield name, pod_spec
+
+    @staticmethod
+    def _iter_named_containers(name, pod_spec):
+        """Yield (compose_service_name, container) for main, init and sidecar containers.
+
+        Naming matches the workload converter: main -> workload name,
+        init -> "<name>-init-<cname>", sidecar -> "<name>-sidecar-<cname>"
+        (containers[1:], convention shared with workloads.py).
+        """
+        containers = pod_spec.get("containers") or []
+        if containers and containers[0]:
+            yield name, containers[0]
+        for ic in pod_spec.get("initContainers") or []:
+            if ic:
+                yield f"{name}-init-{ic.get('name', 'init')}", ic
+        for sc in containers[1:]:
+            if sc:
+                yield f"{name}-sidecar-{sc.get('name', 'sidecar')}", sc
+
+    @staticmethod
     def _find_shared_emptydirs(manifests):
         """Scan workload manifests for emptyDir volumes mounted by 2+ containers.
 
         Returns: {workload_name: {vol_name: {compose_svc_name: mount_path}}}
         """
         result = {}
-        for kind in _WORKLOAD_KINDS:
-            for m in manifests.get(kind, []):
-                name = (m.get("metadata") or {}).get("name", "unknown")
-                spec = m.get("spec") or {}
-                if kind == "Pod":
-                    pod_spec = spec
-                else:
-                    pod_spec = (spec.get("template") or {}).get("spec") or {}
+        for name, pod_spec in EmptyDirTransform._iter_workloads(manifests):
+            emptydir_names = {
+                v.get("name", "") for v in pod_spec.get("volumes") or [] if "emptyDir" in v
+            }
+            if not emptydir_names:
+                continue
 
-                # Find emptyDir volume names
-                emptydir_names = set()
-                for v in pod_spec.get("volumes") or []:
-                    if "emptyDir" in v:
-                        emptydir_names.add(v.get("name", ""))
-                if not emptydir_names:
-                    continue
+            # Map: vol_name -> {compose_svc_name: mount_path}
+            vol_mounts = {}
+            for svc_name, container in EmptyDirTransform._iter_named_containers(name, pod_spec):
+                for vm in container.get("volumeMounts") or []:
+                    if vm.get("name", "") in emptydir_names:
+                        vol_mounts.setdefault(vm["name"], {})[svc_name] = vm.get("mountPath", "")
 
-                # Map: vol_name -> {compose_svc_name: mount_path}
-                vol_mounts = {}
-
-                # Main container (containers[0])
-                containers = pod_spec.get("containers") or []
-                if containers and containers[0]:
-                    for vm in containers[0].get("volumeMounts") or []:
-                        if vm.get("name", "") in emptydir_names:
-                            vol_mounts.setdefault(vm["name"], {})[name] = vm.get("mountPath", "")
-
-                # Init containers
-                for ic in pod_spec.get("initContainers") or []:
-                    if not ic:
-                        continue
-                    ic_name = ic.get("name", "init")
-                    svc_name = f"{name}-init-{ic_name}"
-                    for vm in ic.get("volumeMounts") or []:
-                        if vm.get("name", "") in emptydir_names:
-                            vol_mounts.setdefault(vm["name"], {})[svc_name] = vm.get("mountPath", "")
-
-                # Sidecar containers (containers[1:] — convention shared with workloads.py)
-                for sc in containers[1:]:
-                    if not sc:
-                        continue
-                    sc_name = sc.get("name", "sidecar")
-                    svc_name = f"{name}-sidecar-{sc_name}"
-                    for vm in sc.get("volumeMounts") or []:
-                        if vm.get("name", "") in emptydir_names:
-                            vol_mounts.setdefault(vm["name"], {})[svc_name] = vm.get("mountPath", "")
-
-                # Keep only shared (2+ containers)
-                shared = {vn: mounts for vn, mounts in vol_mounts.items() if len(mounts) >= 2}
-                if shared:
-                    result[name] = shared
+            # Keep only shared (2+ containers)
+            shared = {vn: mounts for vn, mounts in vol_mounts.items() if len(mounts) >= 2}
+            if shared:
+                result[name] = shared
 
         return result
 
