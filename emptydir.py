@@ -24,7 +24,7 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
         result = {}
         for name, pod_spec in iter_workloads(manifests):
             emptydir_names = {
-                v.get("name", "") for v in pod_spec.get("volumes") or [] if "emptyDir" in v
+                v.get("name", "") for v in pod_spec.get("volumes") or [] if v and "emptyDir" in v
             }
             if not emptydir_names:
                 continue
@@ -33,6 +33,8 @@ class EmptyDirTransform:  # pylint: disable=too-few-public-methods
             vol_mounts = {}
             for svc_name, container in iter_named_containers(name, pod_spec):
                 for vm in container.get("volumeMounts") or []:
+                    if not vm:
+                        continue
                     if vm.get("name", "") in emptydir_names:
                         vol_mounts.setdefault(vm["name"], {})[svc_name] = vm.get("mountPath", "")
 
